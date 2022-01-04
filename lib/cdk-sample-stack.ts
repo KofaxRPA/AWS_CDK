@@ -4,10 +4,18 @@ import ecs_patterns = require('@aws-cdk/aws-ecs-patterns');
 import * as cloudfront from '@aws-cdk/aws-cloudfront';
 import * as origins from '@aws-cdk/aws-cloudfront-origins';
 import { OriginProtocolPolicy } from '@aws-cdk/aws-cloudfront'
-
+import { AutoScalingGroup } from '@aws-cdk/aws-autoscaling';  // for elbv2
+import elbv2 = require ('@aws-cdk/aws-elasticloadbalancingv2');
+import {Role, ServicePrincipal, PolicyStatement} from  '@aws-cdk/aws-iam'
 import * as cdk from '@aws-cdk/core';
+import {Repository} from '@aws-cdk/aws-ecr';
+import { Expiration } from '@aws-cdk/core';
+import { LogDrivers } from '@aws-cdk/aws-ecs';
+import * as logs from '@aws-cdk/aws-logs';
 
-export class CdkSampleStack extends cdk.Stack {
+// //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
+// //All the resources in a stack are defined by the stack's AWS CloudFormation template
+export class KofaxRPAStack extends cdk.Stack {
   public readonly postsContentDistrubtion: cloudfront.Distribution;
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -15,41 +23,150 @@ export class CdkSampleStack extends cdk.Stack {
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
-    const cluster = new ecs.Cluster(this, 'Cluster', { vpc });
-    const app = new cdk.App();
-    const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
+    //task definition = json that describes 1 to 10 containers.
+    //task = instance of a task definition running in a cluster
+    //service runs and maintains tasks simultaneously. see scheduling.
+    // a service can only be associated with one task definition. 
+    //       A service can run 2 tasks, but they are both instances of the same one task defintion
+    //when tasks are run on Fargate your cluster resources are managed by Fargate.
+    //
+    //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.FargateTaskDefinition.html
 
-    // Instantiate Fargate Service with just cluster and image
-    const taskDefinition = new ecs.Ec2TaskDefinition(stack, 'TaskDef', {
-      placementConstraints: [ecs.PlacementConstraint.distinctInstances()],
-    });
-    const container = taskDefinition.addContainer('web', {
-      image: ecs.ContainerImage.fromRegistry('postgres:10'),
-      memoryLimitMiB: 256,
-    });    // we create an Application Load Balancer
-    container.addPortMappings({
-      containerPort: 80,
-      hostPort: 8080,
-      protocol: ecs.Protocol.TCP,
-    });
-    const service = new ecs.Ec2Service(stack, 'Service', {
-      cluster,
-      taskDefinition,
-    });
-    service.addPlacementStrategies(
-      ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
-      ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
-    
-    var lb = new ecs_patterns.ApplicationLoadBalancedFargateService(this, "FargateService", {
-      cluster,
-      taskImageOptions: {
-        // https://docs.aws.amazon.com/cdk/api/latest/docs/aws-ecs-patterns-readme.html
-        image: ecs.ContainerImage.fromRegistry("postgres:10"),
-        environment: {
+    // const role = new Role(this, 'MyRole', {
+    //   assumedBy: new ServicePrincipal('ecs-tasks.amazonaws.com'),
+    // });
+
+    // role.addToPolicy(new PolicyStatement({
+    //   resources: ['all'],
+    //   actions: [       
+    //     "ecr:GetAuthorizationToken",
+    //     "ecr:BatchCheckLayerAvailability",
+    //     "ecr:GetDownloadUrlForLayer",
+    //     "ecr:BatchGetImage",
+    //     "logs:CreateLogStream",
+    //     "logs:PutLogEvents"
+    //   ],
+    // }));
+
+
+    // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
+    // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
+    const PGlogDriver=new ecs.AwsLogDriver({
+      //logGroup : 'KofaxRPA_postgresslogdriver',
+      streamPrefix: 'postgres', 
+      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+   })
+   const MClogDriver=new ecs.AwsLogDriver({
+    streamPrefix: 'mc', 
+    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+    logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+  })
+
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA',
+      {
+        memoryLimitMiB: 512,   //default=512
+        cpu: 256,   //default=256
+        // executionRole: role
+      }
+    );
+    const container1 = taskDefinition.addContainer('postgres',
+      {
+        image: ecs.ContainerImage.fromRegistry('postgres:10'),
+        memoryLimitMiB: 256,
+        logging: PGlogDriver // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
+        // https://docs.docker.com/config/containers/logging/configure/
+      }
+    );    
+    // ARN = Amazon Resource Name, unique identifier for an AWS resource.
+    // we will need to use ARNs (role will be automatically created to get image from ECR and to be able to log) when doing this for customers...
+    const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
+    const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
+
+    const container2 = taskDefinition.addContainer('mc',  // runs Apache Tomcat on port 8080
+      {
+       // I only want one MC. so it should be in it's task 
+        image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
+        //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
+        environment:
+        {
           TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
           TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
+        logging: MClogDriver
+        // do we need to add a network so the 3 containers see each other??
+        // how do I add container dependency
+        // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
+        // when using Fargate the network mode is "awsvpc". All 3 would be able to see each other. https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-networking-awsvpc.html
+      }
+    );
+    // declare const contDep: ecs.ContainerDefinition;
+    // MC is dep on postgres
+    dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
+    const contdep: ecs.ContainerDependency = {
+        container : container1,
+        condition : ecs.ContainerDependencyCondition.COMPLETE
+      };
+    container2.addContainerDependencies(contdep);
+    container2.addPortMappings
+    ({
+      containerPort: 8080,  // tomcat
+      // hostPort: 443,   // load balancer
+      protocol: ecs.Protocol.TCP,
+    });
+    const container3 = taskDefinition.addContainer('rs',
+      {
+        //images should be public for the customers.
+        //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
+        //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
+        image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
+      }
+      // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
+      // Do i need to create a separate task for roboserver to support CPU scaling?
+    );
+    // const app = new cdk.App();
+    // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
+    const service = new ecs.FargateService(this, 'Service_KofaxRPA', {
+       cluster,
+       taskDefinition,
+    });
+    // service.addPlacementStrategies(
+    //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
+    //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
+    
+    // we create an Application Load Balancer
+    // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
+    var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {vpc, internetFacing: true });
+    const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
+    service.registerLoadBalancerTargets(
+      {
+        containerName: 'mc',
+        containerPort: 8080,
+        newTargetGroupId: 'ECS',
+        listener: ecs.ListenerConfig.applicationListener(listener, {
+          protocol: elbv2.ApplicationProtocol.HTTP
+        }),
+      },
+    );
+
+    //      Cloudfront (HTTPS)  -->> LB   -->> ECS (containers)    
+    //      cloudfront address is public AND lb address is also public but unknown. (security by obscurity)
+
+        //   LB (HTTP)   -->> ECS (containers)    
+
+
+    // var lb = new ecs_patterns.ApplicationLoadBalancedFargateService(this, "FargateService", {
+    //   cluster,
+    //   taskImageOptions: {
+    //     // https://docs.aws.amazon.com/cdk/api/latest/docs/aws-ecs-patterns-readme.html
+    //     image: ecs.ContainerImage.fromRegistry("postgres:10"),
+    //     environment: {
+    //       TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
+    //       TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
+    //       //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
+    //     },
 
         //need to add clusters to a Fargate Task Definition to get port mappings
         // .addPortMappings({   //https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
@@ -57,20 +174,20 @@ export class CdkSampleStack extends cdk.Stack {
         // });
         //add 3  containers (MC, roboserver, database) to 1 task as in 
         // https://github.com/aws-samples/aws-cdk-examples/blob/08600cd2c0080994c9d4d478b259a8213a786272/typescript/ecs/ecs-service-with-task-placement/index.ts#L21
-      },
-    });
+    //   },
+    // });
 
     //Create a new cloudfront distribution, using a a source the lb
-    this.postsContentDistrubtion = new cloudfront.Distribution(
-      this,
-      "PostsContentDistribution",
-      {
-        defaultBehavior: {
-          //disables HTTPS because we don't have a publicly trusted certificate
-          origin: new origins.LoadBalancerV2Origin(lb.loadBalancer,{protocolPolicy: OriginProtocolPolicy.HTTP_ONLY}),
-        },
-      }
-    );
+    // this.postsContentDistrubtion = new cloudfront.Distribution(
+    //   this,
+    //   "PostsContentDistribution",
+    //   {
+    //     // defaultBehavior: {
+    //       //disables HTTPS because we don't have a publicly trusted certificate
+    //       // origin: new origins.LoadBalancerV2Origin(lb.loadBalancer,{protocolPolicy: OriginProtocolPolicy.HTTP_ONLY}),
+    //     },
+    //   }
+    // );
     
   }
 }

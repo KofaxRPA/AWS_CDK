@@ -1,3 +1,6 @@
+.npmignore
+cdk.json
+jest.config.js
 bin/
 lib/
 test/

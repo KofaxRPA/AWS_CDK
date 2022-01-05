@@ -1,11 +1,11 @@
 import { Template, Match } from '@aws-cdk/assertions';
 import * as cdk from '@aws-cdk/core';
-import * as CdkSample from '../lib/cdk-sample-stack';
+import * as CdkSample from '../lib/KofaxRPA-stack';
 
 test('SQS Queue Created', () => {
   const app = new cdk.App();
     // WHEN
-  const stack = new CdkSample.CdkSampleStack(app, 'MyTestStack');
+  const stack = new CdkSample.KofaxRPAStack(app, 'MyTestStack');
     // THEN
   const template = Template.fromStack(stack);
 
@@ -17,7 +17,7 @@ test('SQS Queue Created', () => {
 test('SNS Topic Created', () => {
   const app = new cdk.App();
   // WHEN
-  const stack = new CdkSample.CdkSampleStack(app, 'MyTestStack');
+  const stack = new CdkSample.KofaxRPAStack(app, 'MyTestStack');
   // THEN
   const template = Template.fromStack(stack);
 

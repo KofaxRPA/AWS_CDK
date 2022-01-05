@@ -1,7 +1,6 @@
 .npmignore
 cdk.json
 jest.config.js
-test/
 *.js
 !jest.config.js
 *.d.ts

@@ -71,21 +71,21 @@ export class KofaxRPAStack extends cdk.Stack {
     })
 
     // Fargate manages applications without concerning us with server instances
-    const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_pg',
+    const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-pg',
       {
         memoryLimitMiB: 512,   //default=512
         cpu: 256,   //default=256
         // executionRole: role
       }
     );
-    const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_mc',
+    const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-mc',
       {
         memoryLimitMiB: 512,   //default=512
         cpu: 256,   //default=256
         // executionRole: role
       }
     );
-    const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_rs',
+    const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-rs',
     {
       memoryLimitMiB: 512,   //default=512
       cpu: 256,   //default=256
@@ -119,9 +119,52 @@ export class KofaxRPAStack extends cdk.Stack {
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
         environment:
         {
-          POSTGRES_USER: "scheduler",
-          POSTGRES_PASSWORD: "schedulerpassword",
-          POSTGRES_DB: "scheduler",
+          CONTEXT_RESOURCE_VALIDATIONQUERY: "SELECT 1",
+          CONTEXT_RESOURCE_USERNAME: "scheduler",
+          CONTEXT_RESOURCE_PASSWORD: "schedulerpassword",
+          CONTEXT_RESOURCE_DRIVERCLASSNAME: "org.postgresql.Driver",
+          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service:5432/scheduler",
+          CONFIG_LICENSE_NAME: "david wright",
+          CONFIG_LICENSE_EMAIL: "david.wright@kofax.com",
+          CONFIG_LICENSE_COMPANY: "david wright S0000047800",
+          CONFIG_LICENSE_PRODUCTIONKEY: "",
+          CONFIG_LICENSE_NONPRODUCTIONKEY: "ixayBQcAgYKAgAAB6S2BaFdJ",
+          SETTINGS_CLUSTER_COUNT: "1",
+          SETTINGS_CLUSTER_NAME_1: "Non Production",
+          SETTINGS_CLUSTER_PRODUCTION_1: "false ",
+          MC_ADMIN_NAME: "admin",
+          MC_ADMIN_PASSWORD: "admin",
+          // 1st Robot developer details
+          DEV_NAME: "david",
+          DEV_PASSWORD: "abc",
+          DEV_FULLNAME: "David Wright",
+          DEV_EMAIL: "david.wright@kofax.com",
+          // MC needs to create the Roboserver and Synchronizer user accounts
+          ROBOSERVER_MC_USERNAME: "roboserver",
+          ROBOSERVER_MC_PASSWORD: "rob123",
+          SYNCH_MC_USERNAME: "synch",
+          SYNCH_MC_PASSWORD: "synch123",
+          // Use Postgres as the log database
+          SETTINGS_ENTRY_COUNT: "7",
+          SETTINGS_ENTRY_KEY_1: "USE_LOGDB",
+          SETTINGS_ENTRY_VALUE_1: "true",
+          SETTINGS_ENTRY_KEY_2: "LOGDB_SCHEMA",
+          SETTINGS_ENTRY_VALUE_2: "scheduler",
+          SETTINGS_ENTRY_KEY_3: "LOGDB_HOST",
+          SETTINGS_ENTRY_VALUE_3: "postgres-service:5432",
+          SETTINGS_ENTRY_KEY_4: "LOGDB_TYPE",
+          SETTINGS_ENTRY_VALUE_4: "PostgreSQL",
+          // if you want to log to a separate database than MC's database 'scheduler' you'll need a second container.
+          SETTINGS_ENTRY_KEY_5: "LOGDB_USERNAME",
+          SETTINGS_ENTRY_VALUE_5: "scheduler",
+          SETTINGS_ENTRY_KEY_6: "LOGDB_PASSWORD",
+          SETTINGS_ENTRY_VALUE_6: "schedulerpassword",
+          // Allow Design Studio to download JDBC driver's from MC.
+          // CONFIG_SECURITY_JDBCDRIVERUPLOAD: "ANY_HOST",
+          // base url - this is how a user would find the Management Console
+          SETTINGS_ENTRY_KEY_7: "BASE_URL",
+          SETTINGS_ENTRY_VALUE_7: "http://yourwebsite.com:8080",
+    
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
         logging: logDriver_mc
@@ -151,21 +194,32 @@ export class KofaxRPAStack extends cdk.Stack {
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
         //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
         image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
+        environment:
+        {
+          ROBOSERVER_ENABLE_MC_REGISTRATION: "true",
+          ROBOSERVER_MC_URL: "http://managementconsole-service:8080/",
+          ROBOSERVER_MC_CLUSTER: "Non Production",
+          ROBOSERVER_MC_USERNAME: "roboserver",
+          ROBOSERVER_MC_PASSWORD: "rob123",
+          ROBOSERVER_ENABLE_SOCKET_SERVICE: "true",
+          ROBOSERVER_SERVER_NAME: "Roboserver",
+          WRAPPER_MAX_MEMORY: "2048",
+        }
       }
       // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
       // Do i need to create a separate task for roboserver to support CPU scaling?
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
-    const service_pg = new ecs.FargateService(this, 'Service_KofaxRPA_pg', {
+    const service_pg = new ecs.FargateService(this, 'Service-KofaxRPA-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
     });
-    const service_ms = new ecs.FargateService(this, 'Service_KofaxRPA_mc', {
+    const service_ms = new ecs.FargateService(this, 'Service-KofaxRPA-mc', {
       cluster,
       taskDefinition: taskDefinition_mc,
     });
-    const service_rs = new ecs.FargateService(this, 'Service_KofaxRPA_rs', {
+    const service_rs = new ecs.FargateService(this, 'Service-KofaxRPA-rs', {
       cluster,
       taskDefinition: taskDefinition_rs,
     });

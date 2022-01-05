@@ -20,10 +20,11 @@ export class KofaxRPAStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     
-    // Create VPC and Fargate Cluster
+    // Create VPC (virtual private cloud) on Amazon Web Service
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
-    const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
+    // Create a cluster (logical grouping of tasks or services) on ECS=Elastic Cloud Services
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); 
     //task definition = json that describes 1 to 10 containers.
     //task = instance of a task definition running in a cluster
     //service runs and maintains tasks simultaneously. see scheduling.
@@ -49,33 +50,53 @@ export class KofaxRPAStack extends cdk.Stack {
     //   ],
     // }));
 
-
+    // Attach loggers to our docker containers
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
-    const PGlogDriver=new ecs.AwsLogDriver({
+    const logDriver_postgres=new ecs.AwsLogDriver({
       //logGroup : 'KofaxRPA_postgresslogdriver',
       streamPrefix: 'postgres', 
       mode: ecs.AwsLogDriverMode.NON_BLOCKING,
       logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-   })
-   const MClogDriver=new ecs.AwsLogDriver({
-    streamPrefix: 'mc', 
-    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
-    logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-  })
+    })
+    const logDriver_mc=new ecs.AwsLogDriver({
+      streamPrefix: 'mc', 
+      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+    })
+    const logDriver_rs=new ecs.AwsLogDriver({
+      streamPrefix: 'rs', 
+      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+    })
 
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA',
+    // Fargate manages applications without concerning us with server instances
+    const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_pg',
       {
         memoryLimitMiB: 512,   //default=512
         cpu: 256,   //default=256
         // executionRole: role
       }
     );
-    const container1 = taskDefinition.addContainer('postgres',
+    const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_mc',
+      {
+        memoryLimitMiB: 512,   //default=512
+        cpu: 256,   //default=256
+        // executionRole: role
+      }
+    );
+    const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA_rs',
+    {
+      memoryLimitMiB: 512,   //default=512
+      cpu: 256,   //default=256
+      // executionRole: role
+    }
+  );
+    const container_pg = taskDefinition_pg.addContainer('postgres',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         memoryLimitMiB: 256,
-        logging: PGlogDriver // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
+        logging: logDriver_postgres // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }
     );    
@@ -84,7 +105,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
     const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
 
-    const container2 = taskDefinition.addContainer('mc',  // runs Apache Tomcat on port 8080
+    const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
@@ -95,7 +116,7 @@ export class KofaxRPAStack extends cdk.Stack {
           TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
-        logging: MClogDriver
+        logging: logDriver_mc
         // do we need to add a network so the 3 containers see each other??
         // how do I add container dependency
         // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
@@ -104,19 +125,19 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // declare const contDep: ecs.ContainerDefinition;
     // MC is dep on postgres
-    dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
+    // dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
     const contdep: ecs.ContainerDependency = {
-        container : container1,
-        condition : ecs.ContainerDependencyCondition.COMPLETE
+        container : container_pg,
+       // condition : ecs.ContainerDependencyCondition.COMPLETE
       };
-    container2.addContainerDependencies(contdep);
-    container2.addPortMappings
+    //container_mc.addContainerDependencies(contdep);
+    container_mc.addPortMappings
     ({
       containerPort: 8080,  // tomcat
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container3 = taskDefinition.addContainer('rs',
+    const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
@@ -128,9 +149,17 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
-    const service = new ecs.FargateService(this, 'Service_KofaxRPA', {
-       cluster,
-       taskDefinition,
+    const service_pg = new ecs.FargateService(this, 'Service_KofaxRPA_pg', {
+      cluster,
+      taskDefinition: taskDefinition_pg,
+    });
+    const service_ms = new ecs.FargateService(this, 'Service_KofaxRPA_mc', {
+      cluster,
+      taskDefinition: taskDefinition_mc,
+    });
+    const service_rs = new ecs.FargateService(this, 'Service_KofaxRPA_rs', {
+      cluster,
+      taskDefinition: taskDefinition_rs,
     });
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
@@ -140,7 +169,7 @@ export class KofaxRPAStack extends cdk.Stack {
     // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
     var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {vpc, internetFacing: true });
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
-    service.registerLoadBalancerTargets(
+    service_ms.registerLoadBalancerTargets(
       {
         containerName: 'mc',
         containerPort: 8080,

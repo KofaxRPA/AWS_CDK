@@ -53,7 +53,7 @@ export class KofaxRPAStack extends cdk.Stack {
     // Attach loggers to our docker containers
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
-    const logDriver_postgres=new ecs.AwsLogDriver({
+    const logDriver_pg=new ecs.AwsLogDriver({
       //logGroup : 'KofaxRPA_postgresslogdriver',
       streamPrefix: 'postgres', 
       mode: ecs.AwsLogDriverMode.NON_BLOCKING,
@@ -92,7 +92,7 @@ export class KofaxRPAStack extends cdk.Stack {
       // executionRole: role
     }
   );
-    const container_pg = taskDefinition_pg.addContainer('postgres',
+    const container_pg = taskDefinition_pg.addContainer('postgres-service',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         environment:
@@ -103,7 +103,7 @@ export class KofaxRPAStack extends cdk.Stack {
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
         memoryLimitMiB: 256,
-        logging: logDriver_postgres // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
+        logging: logDriver_pg // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }
     );    
@@ -112,7 +112,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
     const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
 
-    const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
+    const container_mc = taskDefinition_mc.addContainer('managementconsole-service',  // runs Apache Tomcat on port 8080
       {
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
@@ -188,7 +188,7 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container_rs = taskDefinition_rs.addContainer('rs',
+    const container_rs = taskDefinition_rs.addContainer('roboserver-service',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
@@ -204,7 +204,8 @@ export class KofaxRPAStack extends cdk.Stack {
           ROBOSERVER_ENABLE_SOCKET_SERVICE: "true",
           ROBOSERVER_SERVER_NAME: "Roboserver",
           WRAPPER_MAX_MEMORY: "2048",
-        }
+        },
+        logging: logDriver_rs
       }
       // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
       // Do i need to create a separate task for roboserver to support CPU scaling?
@@ -233,7 +234,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
     service_ms.registerLoadBalancerTargets(
       {
-        containerName: 'mc',
+        containerName: 'managementconsole-service',
         containerPort: 8080,
         newTargetGroupId: 'ECS',
         listener: ecs.ListenerConfig.applicationListener(listener, {

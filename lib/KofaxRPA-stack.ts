@@ -95,6 +95,13 @@ export class KofaxRPAStack extends cdk.Stack {
     const container_pg = taskDefinition_pg.addContainer('postgres',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
+        environment:
+        {
+          POSTGRES_USER: "scheduler",
+          POSTGRES_PASSWORD: "schedulerpassword",
+          POSTGRES_DB: "scheduler",
+          //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
+        },
         memoryLimitMiB: 256,
         logging: logDriver_postgres // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
@@ -112,8 +119,9 @@ export class KofaxRPAStack extends cdk.Stack {
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
         environment:
         {
-          TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
-          TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
+          POSTGRES_USER: "scheduler",
+          POSTGRES_PASSWORD: "schedulerpassword",
+          POSTGRES_DB: "scheduler",
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
         logging: logDriver_mc

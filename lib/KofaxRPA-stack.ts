@@ -101,8 +101,9 @@ export class KofaxRPAStack extends cdk.Stack {
       // executionRole: role
     }
   );
-    const container_pg = taskDefinition_pg.addContainer('postgres-service',
+    const container_pg = taskDefinition_pg.addContainer('pg',
       {
+        containerName : 'postgres-service',
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         environment:
         {
@@ -121,8 +122,9 @@ export class KofaxRPAStack extends cdk.Stack {
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
     const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
 
-    const container_mc = taskDefinition_mc.addContainer('managementconsole-service',  // runs Apache Tomcat on port 8080
+    const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
+        containerName: 'managementconsole-service',
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
@@ -197,11 +199,12 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container_rs = taskDefinition_rs.addContainer('roboserver-service',
+    const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
         //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
+        containerName: 'roboserver-service',
         image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
         environment:
         {

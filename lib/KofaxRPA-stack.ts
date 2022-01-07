@@ -51,14 +51,14 @@ export class KofaxRPAStack extends cdk.Stack {
     // }));
 
 
-    //Defining a parameter
+    //Defining a parameter https://docs.aws.amazon.com/cdk/v2/guide/parameters.html
     // const uploadBucketName = new CfnParameter(this, "uploadBucketName", {
     //   type: "String",
     //   description: "The name of the Amazon S3 bucket where uploaded files will be stored."});
     //using a parameter  uploadBucketName.toString
     //cdk deploy --parameters uploadBucketName=UploadBucket
 
-    
+
     // Attach loggers to our docker containers
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch

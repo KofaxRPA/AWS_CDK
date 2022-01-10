@@ -20,6 +20,43 @@ export class KofaxRPAStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     
+    const Postgress_MC_Password = new cdk.CfnParameter(this, 'Postgress-MC-Password',{
+      type: 'String',
+      description: 'Password used by Management Console to reach PostGres Database. (5<=length<=10)',
+      minLength:5,
+      maxLength:10,
+      default: CreatePassword(10)
+    })
+    const MC_Admin_Password = new cdk.CfnParameter(this, 'MC-Admin-Password',{
+      type: 'String',
+      description: 'Management Console Admin\'s password. (3<=length<=10)',
+      minLength:3,
+      maxLength:10,
+      default: 'dav'
+    })
+    const MC_User_Name = new cdk.CfnParameter(this, 'MC-User-Name',{
+      type: 'String',
+      description: 'Robot Builder\'s username. (3<=length<=10)',
+      minLength:3,
+      maxLength:10,
+      default: 'dav'
+    })
+    const MC_User_Password = new cdk.CfnParameter(this, 'MC-User-Password',{
+      type: 'String',
+      description: 'Robot Builder\'s password. (5<=length<=10)',
+      minLength:5,
+      maxLength:10,
+      default: 'dav'
+    })
+    const MC_Roboserver_Password = new cdk.CfnParameter(this, 'MC-Roboserver-Password',{
+      type: 'String',
+      description: 'Roboserver\'s password for Management Console. (3<=length<=10)',
+      minLength:3,
+      maxLength:10,
+      default: CreatePassword(10)
+    })
+
+
     // Create VPC (virtual private cloud) on Amazon Web Service
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
@@ -108,7 +145,7 @@ export class KofaxRPAStack extends cdk.Stack {
         environment:
         {
           POSTGRES_USER: "scheduler",
-          POSTGRES_PASSWORD: "schedulerpassword",
+          POSTGRES_PASSWORD: Postgress_MC_Password.valueAsString,
           POSTGRES_DB: "scheduler",
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
@@ -294,4 +331,9 @@ export class KofaxRPAStack extends cdk.Stack {
     // );
     
   }
+}
+
+function CreatePassword(password_length : number): string {
+  var pwdChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  return Array(password_length).fill(pwdChars).map(function(x) { return x[Math.floor(Math.random() * x.length)] }).join('');
 }

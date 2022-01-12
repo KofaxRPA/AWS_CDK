@@ -12,6 +12,7 @@ import {Repository} from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
 import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
+// import { FromCloudFormationPropertyObject } from '@aws-cdk/core/lib/cfn-parse';
 
 // //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
 // //All the resources in a stack are defined by the stack's AWS CloudFormation template
@@ -44,7 +45,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const MC_User_Password = new cdk.CfnParameter(this, 'MC-User-Password',{
       type: 'String',
       description: 'Robot Builder\'s password. (5<=length<=10)',
-      minLength:5,
+      minLength:3,
       maxLength:10,
       default: 'dav'
     })
@@ -145,7 +146,8 @@ export class KofaxRPAStack extends cdk.Stack {
         environment:
         {
           POSTGRES_USER: "scheduler",
-          POSTGRES_PASSWORD: Postgress_MC_Password.valueAsString,
+          POSTGRES_PASSWORD: "schedulerpassword", 
+//          POSTGRES_PASSWORD: Postgress_MC_Password.valueAsString,
           POSTGRES_DB: "scheduler",
           //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
@@ -154,6 +156,18 @@ export class KofaxRPAStack extends cdk.Stack {
         // https://docs.docker.com/config/containers/logging/configure/
       }
     );    
+    container_pg.addPortMappings({
+      containerPort:5432,
+    })
+    // new ecs.FargateService(this,'Service',{
+    //   cluster,
+    //   taskDefinition_pg,
+    //   cloudMapOptions: {
+    //     //dnsRecordType: cloudmap.DnsRecordType.SRV,
+    //     container : container_pg,
+    //     containerPort : 2345,
+    //   }
+    // })
     // ARN = Amazon Resource Name, unique identifier for an AWS resource.
     // we will need to use ARNs (role will be automatically created to get image from ECR and to be able to log) when doing this for customers...
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");

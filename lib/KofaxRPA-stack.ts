@@ -12,9 +12,6 @@ import {Repository} from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
 import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
-import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
-import * as servicediscovery from "@aws-cdk/aws-servicediscovery";
-// import { FromCloudFormationPropertyObject } from '@aws-cdk/core/lib/cfn-parse';
 
 // //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
 // //All the resources in a stack are defined by the stack's AWS CloudFormation template
@@ -23,48 +20,10 @@ export class KofaxRPAStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
     
-    const Postgress_MC_Password = new cdk.CfnParameter(this, 'Postgress-MC-Password',{
-      type: 'String',
-      description: 'Password used by Management Console to reach PostGres Database. (5<=length<=10)',
-      minLength:5,
-      maxLength:10,
-      default: CreatePassword(10)
-    })
-    const MC_Admin_Password = new cdk.CfnParameter(this, 'MC-Admin-Password',{
-      type: 'String',
-      description: 'Management Console Admin\'s password. (3<=length<=10)',
-      minLength:3,
-      maxLength:10,
-      default: 'dav'
-    })
-    const MC_User_Name = new cdk.CfnParameter(this, 'MC-User-Name',{
-      type: 'String',
-      description: 'Robot Builder\'s username. (3<=length<=10)',
-      minLength:3,
-      maxLength:10,
-      default: 'dav'
-    })
-    const MC_User_Password = new cdk.CfnParameter(this, 'MC-User-Password',{
-      type: 'String',
-      description: 'Robot Builder\'s password. (5<=length<=10)',
-      minLength:3,
-      maxLength:10,
-      default: 'dav'
-    })
-    const MC_Roboserver_Password = new cdk.CfnParameter(this, 'MC-Roboserver-Password',{
-      type: 'String',
-      description: 'Roboserver\'s password for Management Console. (3<=length<=10)',
-      minLength:3,
-      maxLength:10,
-      default: CreatePassword(10)
-    })
-
-
-    // Create VPC (virtual private cloud) on Amazon Web Service
+    // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
-    // Create a cluster (logical grouping of tasks or services) on ECS=Elastic Cloud Services
-    const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); 
+    const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
     //task definition = json that describes 1 to 10 containers.
     //task = instance of a task definition running in a cluster
     //service runs and maintains tasks simultaneously. see scheduling.
@@ -91,103 +50,61 @@ export class KofaxRPAStack extends cdk.Stack {
     // }));
 
 
-    //Defining a parameter https://docs.aws.amazon.com/cdk/v2/guide/parameters.html
-    // const uploadBucketName = new CfnParameter(this, "uploadBucketName", {
-    //   type: "String",
-    //   description: "The name of the Amazon S3 bucket where uploaded files will be stored."});
-    //using a parameter  uploadBucketName.toString
-    //cdk deploy --parameters uploadBucketName=UploadBucket
-
-
-    // Attach loggers to our docker containers
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
-    const logDriver_pg=new ecs.AwsLogDriver({
+    const PGlogDriver=new ecs.AwsLogDriver({
       //logGroup : 'KofaxRPA_postgresslogdriver',
       streamPrefix: 'postgres', 
       mode: ecs.AwsLogDriverMode.NON_BLOCKING,
       logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-    })
-    const logDriver_mc=new ecs.AwsLogDriver({
-      streamPrefix: 'mc', 
-      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
-      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-    })
-    const logDriver_rs=new ecs.AwsLogDriver({
-      streamPrefix: 'rs', 
-      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
-      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-    })
+   })
+   const MClogDriver=new ecs.AwsLogDriver({
+    streamPrefix: 'mc', 
+    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+    logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+  })
 
-    // Fargate manages applications without concerning us with server instances
-    const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-pg',
+    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA',
       {
         memoryLimitMiB: 512,   //default=512
         cpu: 256,   //default=256
         // executionRole: role
       }
     );
-    const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-mc',
+    const container1 = taskDefinition.addContainer('postgres',
       {
-        memoryLimitMiB: 512,   //default=512
-        cpu: 256,   //default=256
-        // executionRole: role
-      }
-    );
-    const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 'TaskDef-KofaxRPA-rs',
-    {
-      memoryLimitMiB: 512,   //default=512
-      cpu: 256,   //default=256
-      // executionRole: role
-    }
-  );
-    const container_pg = taskDefinition_pg.addContainer('pg',
-      {
-        containerName : 'postgres',
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         environment:
         {
           POSTGRES_USER: "scheduler",
-          POSTGRES_PASSWORD: "schedulerpassword", 
-//          POSTGRES_PASSWORD: Postgress_MC_Password.valueAsString,
+          POSTGRES_PASSWORD: "schedulerpassword",
           POSTGRES_DB: "scheduler",
-          //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
         memoryLimitMiB: 256,
-        logging: logDriver_pg // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
+        logging: PGlogDriver // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }
     );    
-    container_pg.addPortMappings({
-      containerPort:5432,
-    })
-    // new ecs.FargateService(this,'Service',{
-    //   cluster,
-    //   taskDefinition_pg,
-    //   cloudMapOptions: {
-    //     //dnsRecordType: cloudmap.DnsRecordType.SRV,
-    //     container : container_pg,
-    //     containerPort : 2345,
-    //   }
-    // })
     // ARN = Amazon Resource Name, unique identifier for an AWS resource.
     // we will need to use ARNs (role will be automatically created to get image from ECR and to be able to log) when doing this for customers...
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
     const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
 
-    const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
+    const container2 = taskDefinition.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
-        containerName: 'managementconsole',
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
         environment:
         {
+          POSTGRES_USER: "scheduler",
           CONTEXT_RESOURCE_VALIDATIONQUERY: "SELECT 1",
+          POSTGRES_PASSWORD: "schedulerpassword",
           CONTEXT_RESOURCE_USERNAME: "scheduler",
+          POSTGRES_DB: "scheduler",
           CONTEXT_RESOURCE_PASSWORD: "schedulerpassword",
           CONTEXT_RESOURCE_DRIVERCLASSNAME: "org.postgresql.Driver",
-          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service.dnsnamespaceRPA:5432/scheduler",
+          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service:5432/scheduler",
           CONFIG_LICENSE_NAME: "david wright",
           CONFIG_LICENSE_EMAIL: "david.wright@kofax.com",
           CONFIG_LICENSE_COMPANY: "david wright S0000047800",
@@ -228,10 +145,8 @@ export class KofaxRPAStack extends cdk.Stack {
           // base url - this is how a user would find the Management Console
           SETTINGS_ENTRY_KEY_7: "BASE_URL",
           SETTINGS_ENTRY_VALUE_7: "http://yourwebsite.com:8080",
-    
-          //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
         },
-        logging: logDriver_mc
+        logging: MClogDriver
         // do we need to add a network so the 3 containers see each other??
         // how do I add container dependency
         // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
@@ -240,84 +155,34 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // declare const contDep: ecs.ContainerDefinition;
     // MC is dep on postgres
-    // dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
+    dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
     const contdep: ecs.ContainerDependency = {
-        container : container_pg,
-       // condition : ecs.ContainerDependencyCondition.COMPLETE
+        container : container1,
+      //  condition : ecs.ContainerDependencyCondition.COMPLETE
       };
-    //container_mc.addContainerDependencies(contdep);
-    container_mc.addPortMappings
+    // container2.addContainerDependencies(contdep);
+    container2.addPortMappings
     ({
       containerPort: 8080,  // tomcat
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container_rs = taskDefinition_rs.addContainer('rs',
+    const container3 = taskDefinition.addContainer('rs',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
         //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
-        containerName: 'roboserver',
         image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
-        environment:
-        {
-          ROBOSERVER_ENABLE_MC_REGISTRATION: "true",
-          ROBOSERVER_MC_URL: "http://managementconsole-service.dnsnamespaceRPA:8080/",
-          ROBOSERVER_MC_CLUSTER: "Non Production",
-          ROBOSERVER_MC_USERNAME: "roboserver",
-          ROBOSERVER_MC_PASSWORD: "rob123",
-          ROBOSERVER_ENABLE_SOCKET_SERVICE: "true",
-          ROBOSERVER_SERVER_NAME: "Roboserver",
-          WRAPPER_MAX_MEMORY: "2048",
-        },
-        logging: logDriver_rs
       }
       // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
       // Do i need to create a separate task for roboserver to support CPU scaling?
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
-
-
-    // connect the containers together with DNS
-    const dnsNamespace = new servicediscovery.PrivateDnsNamespace(
-      this,
-      "DnsNamespace",
-      {
-        name: "dnsnamespaceRPA",
-        vpc: vpc,
-        description: "Private DnsNamespace for my Microservices",
-      }
-    );
-
-    
-    const service_pg = new ecs.FargateService(this, 'Service-KofaxRPA-pg', {
-      cluster,
-      taskDefinition: taskDefinition_pg,
-      cloudMapOptions: {
-        // This will be your service_name.namespace
-        name: "postgres-service",
-        cloudMapNamespace: dnsNamespace,
-        dnsRecordType: DnsRecordType.A,
-      },
+    const service = new ecs.FargateService(this, 'Service_KofaxRPA', {
+       cluster,
+       taskDefinition,
     });
-    const service_ms = new ecs.FargateService(this, 'Service-KofaxRPA-mc', {
-      cluster,
-      taskDefinition: taskDefinition_mc,
-      cloudMapOptions: {
-        // This will be your service_name.namespace
-        name: "managementconsole-service",
-        cloudMapNamespace: dnsNamespace,
-        dnsRecordType: DnsRecordType.A,
-      },
-    });
-    const service_rs = new ecs.FargateService(this, 'Service-KofaxRPA-rs', {   //autoscaling
-      cluster,
-      taskDefinition: taskDefinition_rs,
-    });
-
-
-
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
@@ -326,9 +191,9 @@ export class KofaxRPAStack extends cdk.Stack {
     // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
     var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {vpc, internetFacing: true });
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
-    service_ms.registerLoadBalancerTargets(
+    service.registerLoadBalancerTargets(
       {
-        containerName: 'managementconsole',
+        containerName: 'mc',
         containerPort: 8080,
         newTargetGroupId: 'ECS',
         listener: ecs.ListenerConfig.applicationListener(listener, {
@@ -376,9 +241,4 @@ export class KofaxRPAStack extends cdk.Stack {
     // );
     
   }
-}
-
-function CreatePassword(password_length : number): string {
-  var pwdChars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  return Array(password_length).fill(pwdChars).map(function(x) { return x[Math.floor(Math.random() * x.length)] }).join('');
 }

@@ -12,6 +12,8 @@ import {Repository} from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
 import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
+import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
+import * as servicediscovery from "@aws-cdk/aws-servicediscovery";
 // import { FromCloudFormationPropertyObject } from '@aws-cdk/core/lib/cfn-parse';
 
 // //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
@@ -141,7 +143,7 @@ export class KofaxRPAStack extends cdk.Stack {
   );
     const container_pg = taskDefinition_pg.addContainer('pg',
       {
-        containerName : 'postgres-service',
+        containerName : 'postgres',
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         environment:
         {
@@ -175,7 +177,7 @@ export class KofaxRPAStack extends cdk.Stack {
 
     const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
-        containerName: 'managementconsole-service',
+        containerName: 'managementconsole',
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
@@ -185,7 +187,7 @@ export class KofaxRPAStack extends cdk.Stack {
           CONTEXT_RESOURCE_USERNAME: "scheduler",
           CONTEXT_RESOURCE_PASSWORD: "schedulerpassword",
           CONTEXT_RESOURCE_DRIVERCLASSNAME: "org.postgresql.Driver",
-          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service:5432/scheduler",
+          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service.dnsnamespaceRPA:5432/scheduler",
           CONFIG_LICENSE_NAME: "david wright",
           CONFIG_LICENSE_EMAIL: "david.wright@kofax.com",
           CONFIG_LICENSE_COMPANY: "david wright S0000047800",
@@ -255,12 +257,12 @@ export class KofaxRPAStack extends cdk.Stack {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
         //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
-        containerName: 'roboserver-service',
+        containerName: 'roboserver',
         image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
         environment:
         {
           ROBOSERVER_ENABLE_MC_REGISTRATION: "true",
-          ROBOSERVER_MC_URL: "http://managementconsole-service:8080/",
+          ROBOSERVER_MC_URL: "http://managementconsole-service.dnsnamespaceRPA:8080/",
           ROBOSERVER_MC_CLUSTER: "Non Production",
           ROBOSERVER_MC_USERNAME: "roboserver",
           ROBOSERVER_MC_PASSWORD: "rob123",
@@ -275,18 +277,47 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
+
+
+    // connect the containers together with DNS
+    const dnsNamespace = new servicediscovery.PrivateDnsNamespace(
+      this,
+      "DnsNamespace",
+      {
+        name: "dnsnamespaceRPA",
+        vpc: vpc,
+        description: "Private DnsNamespace for my Microservices",
+      }
+    );
+
+    
     const service_pg = new ecs.FargateService(this, 'Service-KofaxRPA-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
+      cloudMapOptions: {
+        // This will be your service_name.namespace
+        name: "postgres-service",
+        cloudMapNamespace: dnsNamespace,
+        dnsRecordType: DnsRecordType.A,
+      },
     });
     const service_ms = new ecs.FargateService(this, 'Service-KofaxRPA-mc', {
       cluster,
       taskDefinition: taskDefinition_mc,
+      cloudMapOptions: {
+        // This will be your service_name.namespace
+        name: "managementconsole-service",
+        cloudMapNamespace: dnsNamespace,
+        dnsRecordType: DnsRecordType.A,
+      },
     });
-    const service_rs = new ecs.FargateService(this, 'Service-KofaxRPA-rs', {
+    const service_rs = new ecs.FargateService(this, 'Service-KofaxRPA-rs', {   //autoscaling
       cluster,
       taskDefinition: taskDefinition_rs,
     });
+
+
+
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
@@ -297,7 +328,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
     service_ms.registerLoadBalancerTargets(
       {
-        containerName: 'managementconsole-service',
+        containerName: 'managementconsole',
         containerPort: 8080,
         newTargetGroupId: 'ECS',
         listener: ecs.ListenerConfig.applicationListener(listener, {

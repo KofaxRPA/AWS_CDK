@@ -76,6 +76,12 @@ export class KofaxRPAStack extends cdk.Stack {
     cpu: 512,   //default=256
     // executionRole: role
   });
+  const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 't-rs',
+  {
+    memoryLimitMiB: 512,   //default=512
+    cpu: 256,   //default=256
+    // executionRole: role
+  });
     const container_pg = taskDefinition_pg.addContainer('postgres',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
@@ -172,7 +178,7 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container_rs = taskDefinition_mc.addContainer('rs',
+    const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
@@ -187,11 +193,15 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
-   });
-       const service_mc = new ecs.FargateService(this, 's-mc', {
-    cluster,
-    taskDefinition: taskDefinition_mc,
- });
+    });
+    const service_mc = new ecs.FargateService(this, 's-mc', {
+      cluster,
+      taskDefinition: taskDefinition_mc,
+    });
+    const service_rs = new ecs.FargateService(this, 's-rs', {
+      cluster,
+      taskDefinition: taskDefinition_rs,
+    });
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));

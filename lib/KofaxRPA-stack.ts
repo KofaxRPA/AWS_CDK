@@ -12,7 +12,8 @@ import {Repository} from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
 import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
-
+import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
+import * as servicediscovery from "@aws-cdk/aws-servicediscovery"
 // //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
 // //All the resources in a stack are defined by the stack's AWS CloudFormation template
 export class KofaxRPAStack extends cdk.Stack {
@@ -115,7 +116,7 @@ export class KofaxRPAStack extends cdk.Stack {
           POSTGRES_DB: "scheduler",
           CONTEXT_RESOURCE_PASSWORD: "schedulerpassword",
           CONTEXT_RESOURCE_DRIVERCLASSNAME: "org.postgresql.Driver",
-          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service:5432/scheduler",
+          CONTEXT_RESOURCE_URL: "jdbc:postgresql://postgres-service.dnsnamespaceRPA:5432/scheduler",
           CONFIG_LICENSE_NAME: "david wright",
           CONFIG_LICENSE_EMAIL: "david.wright@kofax.com",
           CONFIG_LICENSE_COMPANY: "david wright S0000047800",
@@ -143,7 +144,7 @@ export class KofaxRPAStack extends cdk.Stack {
           SETTINGS_ENTRY_KEY_2: "LOGDB_SCHEMA",
           SETTINGS_ENTRY_VALUE_2: "scheduler",
           SETTINGS_ENTRY_KEY_3: "LOGDB_HOST",
-          SETTINGS_ENTRY_VALUE_3: "postgres-service:5432",
+          SETTINGS_ENTRY_VALUE_3: "postgres-service.dnsnamespaceRPA:5432",
           SETTINGS_ENTRY_KEY_4: "LOGDB_TYPE",
           SETTINGS_ENTRY_VALUE_4: "PostgreSQL",
           // if you want to log to a separate database than MC's database 'scheduler' you'll need a second container.
@@ -190,13 +191,34 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
+    const dnsNamespace = new servicediscovery.PrivateDnsNamespace(
+      this,
+      "DnsNamespace",
+      {
+        name: "dnsnamespaceRPA",
+        vpc: vpc,
+        description: "Private DnsNamespace for my Microservices",
+      }
+    );
     const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
+      cloudMapOptions: {
+        // This will be your service_name.namespace
+        name: "postgres-service",
+        cloudMapNamespace: dnsNamespace,
+        dnsRecordType: DnsRecordType.A,
+      },
     });
     const service_mc = new ecs.FargateService(this, 's-mc', {
       cluster,
       taskDefinition: taskDefinition_mc,
+      cloudMapOptions: {
+        // This will be your service_name.namespace
+        name: "managementconsole-service",
+        cloudMapNamespace: dnsNamespace,
+        dnsRecordType: DnsRecordType.A,
+      },
     });
     const service_rs = new ecs.FargateService(this, 's-rs', {
       cluster,

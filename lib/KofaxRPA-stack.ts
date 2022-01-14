@@ -52,28 +52,28 @@ export class KofaxRPAStack extends cdk.Stack {
 
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
-    const PGlogDriver=new ecs.AwsLogDriver({
+    const LogDriver_pg=new ecs.AwsLogDriver({
       //logGroup : 'KofaxRPA_postgresslogdriver',
       streamPrefix: 'postgres', 
       mode: ecs.AwsLogDriverMode.NON_BLOCKING,
       logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
    })
-   const MClogDriver=new ecs.AwsLogDriver({
+   const LogDriver_mc=new ecs.AwsLogDriver({
     streamPrefix: 'mc', 
     mode: ecs.AwsLogDriverMode.NON_BLOCKING,
     logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
   })
 
-  const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef_pg',
+  const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 't-pg',
   {
     memoryLimitMiB: 512,   //default=512
     cpu: 256,   //default=256
     // executionRole: role
   });
-  const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef_mc',
+  const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 't-mc',
   {
-    memoryLimitMiB: 512,   //default=512
-    cpu: 256,   //default=256
+    memoryLimitMiB: 1024,   //default=512
+    cpu: 512,   //default=256
     // executionRole: role
   });
     const container_pg = taskDefinition_pg.addContainer('postgres',
@@ -86,7 +86,7 @@ export class KofaxRPAStack extends cdk.Stack {
           POSTGRES_DB: "scheduler",
         },
         memoryLimitMiB: 256,
-        logging: PGlogDriver // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
+        logging: LogDriver_pg // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }
     );    
@@ -151,7 +151,7 @@ export class KofaxRPAStack extends cdk.Stack {
           SETTINGS_ENTRY_KEY_7: "BASE_URL",
           SETTINGS_ENTRY_VALUE_7: "http://yourwebsite.com:8080",
         },
-        logging: MClogDriver
+        logging: LogDriver_mc
         // do we need to add a network so the 3 containers see each other??
         // how do I add container dependency
         // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_definition_parameters.html
@@ -184,11 +184,11 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
-    const service_pg = new ecs.FargateService(this, 'Service_pg', {
+    const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
    });
-       const service_mc = new ecs.FargateService(this, 'Service_mc', {
+       const service_mc = new ecs.FargateService(this, 's-mc', {
     cluster,
     taskDefinition: taskDefinition_mc,
  });

@@ -4,7 +4,8 @@ import { KofaxRPAStack } from '../lib/KofaxRPA-stack';
 
 const app = new cdk.App();
 var today = new Date();
-var StackName ='KofaxRPAStack-'+dateAsYYYYMMDDHHNNSS(today);
+// var StackName ='RPA-'+dateAsYYYYMMDDHHNNSS(today);
+var StackName ='RPA-'+leftpad(today.getHours(),2) + leftpad(today.getMinutes(),2);
 new KofaxRPAStack(app, StackName);
 
 function dateAsYYYYMMDDHHNNSS(date: Date): string {

@@ -64,14 +64,19 @@ export class KofaxRPAStack extends cdk.Stack {
     logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
   })
 
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef_KofaxRPA',
-      {
-        memoryLimitMiB: 512,   //default=512
-        cpu: 256,   //default=256
-        // executionRole: role
-      }
-    );
-    const container_pg = taskDefinition.addContainer('postgres',
+  const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 'TaskDef_pg',
+  {
+    memoryLimitMiB: 512,   //default=512
+    cpu: 256,   //default=256
+    // executionRole: role
+  });
+  const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 'TaskDef_mc',
+  {
+    memoryLimitMiB: 512,   //default=512
+    cpu: 256,   //default=256
+    // executionRole: role
+  });
+    const container_pg = taskDefinition_pg.addContainer('postgres',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
         environment:
@@ -90,7 +95,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
     const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
 
-    const container_mc = taskDefinition.addContainer('mc',  // runs Apache Tomcat on port 8080
+    const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
        // I only want one MC. so it should be in it's task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
@@ -167,7 +172,7 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    const container_rs = taskDefinition.addContainer('rs',
+    const container_rs = taskDefinition_mc.addContainer('rs',
       {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
@@ -179,10 +184,14 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // const app = new cdk.App();
     // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
-    const service = new ecs.FargateService(this, 'Service_KofaxRPA', {
-       cluster,
-       taskDefinition,
-    });
+    const service_pg = new ecs.FargateService(this, 'Service_pg', {
+      cluster,
+      taskDefinition: taskDefinition_pg,
+   });
+       const service_mc = new ecs.FargateService(this, 'Service_mc', {
+    cluster,
+    taskDefinition: taskDefinition_mc,
+ });
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
@@ -191,7 +200,7 @@ export class KofaxRPAStack extends cdk.Stack {
     // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
     var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {vpc, internetFacing: true });
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
-    service.registerLoadBalancerTargets(
+    service_mc.registerLoadBalancerTargets(
       {
         containerName: 'mc',
         containerPort: 8080,

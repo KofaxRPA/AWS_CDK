@@ -74,7 +74,7 @@ export class KofaxRPAStack extends cdk.Stack {
   const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 't-mc',
   {
     memoryLimitMiB: 1024,   //default=512
-    cpu: 512,   //default=256
+    cpu: 1024,   //default=256
     // executionRole: role
   });
   const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 't-rs',
@@ -179,6 +179,12 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
+    container_pg.addPortMappings
+    ({
+      containerPort: 5432,  // postgres
+      // hostPort: 443,   // load balancer
+      protocol: ecs.Protocol.TCP,
+    });
     const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
@@ -203,6 +209,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
+      enableExecuteCommand: true,  // enables shell access to container via AWS CLI https://docs.aws.amazon.com/cdk/api/v1/docs/aws-ecs-readme.html#ecs-exec-command
       cloudMapOptions: {
         // This will be your service_name.namespace
         name: "postgres-service",
@@ -213,6 +220,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_mc = new ecs.FargateService(this, 's-mc', {
       cluster,
       taskDefinition: taskDefinition_mc,
+      enableExecuteCommand: true,
       cloudMapOptions: {
         // This will be your service_name.namespace
         name: "managementconsole-service",
@@ -223,6 +231,13 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_rs = new ecs.FargateService(this, 's-rs', {
       cluster,
       taskDefinition: taskDefinition_rs,
+      enableExecuteCommand: true,
+      
+      
+   //   securityGroups: {list. TODO!!!} //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.FargateService.html#securitygroups
+      //https://bobbyhadz.com/blog/aws-cdk-security-group-example
+
+
     });
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 

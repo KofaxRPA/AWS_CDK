@@ -67,6 +67,9 @@ export class KofaxRPAStack extends cdk.Stack {
 
   const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 't-pg',
   {
+    // Memory & CPU values must be compatible. Hover mouse over "memoryLimitMiB" to see values
+    // otherwise you get error "Create TaskDefinition: No Fargate configuration exists for given values"
+    // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
     memoryLimitMiB: 512,   //default=512
     cpu: 256,   //default=256
     // executionRole: role
@@ -74,7 +77,7 @@ export class KofaxRPAStack extends cdk.Stack {
   const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 't-mc',
   {
     memoryLimitMiB: 1024,   //default=512
-    cpu: 1024,   //default=256
+    cpu: 512,   //default=256
     // executionRole: role
   });
   const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 't-rs',
@@ -104,7 +107,7 @@ export class KofaxRPAStack extends cdk.Stack {
 
     const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
-       // I only want one MC. so it should be in it's task 
+       // I only want one MC. so it should be in it's own task 
         image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
         environment:
@@ -179,12 +182,12 @@ export class KofaxRPAStack extends cdk.Stack {
       // hostPort: 443,   // load balancer
       protocol: ecs.Protocol.TCP,
     });
-    container_pg.addPortMappings
-    ({
-      containerPort: 5432,  // postgres
-      // hostPort: 443,   // load balancer
-      protocol: ecs.Protocol.TCP,
-    });
+    // container_pg.addPortMappings
+    // ({
+    //   containerPort: 5432,  // postgres
+    //   // hostPort: 443,   // load balancer
+    //   protocol: ecs.Protocol.TCP,
+    // });
     const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
@@ -231,6 +234,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_rs = new ecs.FargateService(this, 's-rs', {
       cluster,
       taskDefinition: taskDefinition_rs,
+      //name: "roboserver-service",
       enableExecuteCommand: true,
       
       

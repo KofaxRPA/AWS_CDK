@@ -5,22 +5,23 @@ import * as cloudfront from '@aws-cdk/aws-cloudfront';
 import * as origins from '@aws-cdk/aws-cloudfront-origins';
 import { OriginProtocolPolicy } from '@aws-cdk/aws-cloudfront'
 import { AutoScalingGroup } from '@aws-cdk/aws-autoscaling';  // for elbv2
-import elbv2 = require ('@aws-cdk/aws-elasticloadbalancingv2');
-import {Role, ServicePrincipal, PolicyStatement} from  '@aws-cdk/aws-iam'
+import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
+import { Role, ServicePrincipal, PolicyStatement } from '@aws-cdk/aws-iam'
 import * as cdk from '@aws-cdk/core';
-import {Repository} from '@aws-cdk/aws-ecr';
+import { Repository } from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
 import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
 import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
 import * as servicediscovery from "@aws-cdk/aws-servicediscovery"
-// //A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
-// //All the resources in a stack are defined by the stack's AWS CloudFormation template
+// A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
+// All the resources in a stack are defined by the stack's AWS CloudFormation template
+// This Typescript generates a JSON CloudFormation Template for the Kofax RPA Stack
 export class KofaxRPAStack extends cdk.Stack {
   public readonly postsContentDistrubtion: cloudfront.Distribution;
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-    
+
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
@@ -53,39 +54,39 @@ export class KofaxRPAStack extends cdk.Stack {
 
     // View STDOUT/STDERR logs at AWS Cloudwatch/logs/loggroups https://eu-central-1.console.aws.amazon.com/cloudwatch/home?region=eu-central-1#logsV2:log-groups
     // or at ECS/clusters/cluster/task/container/log will give a link to Cloudwatch
-    const LogDriver_pg=new ecs.AwsLogDriver({
+    const LogDriver_pg = new ecs.AwsLogDriver({
       //logGroup : 'KofaxRPA_postgresslogdriver',
-      streamPrefix: 'postgres', 
+      streamPrefix: 'postgres',
       mode: ecs.AwsLogDriverMode.NON_BLOCKING,
-      logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-   })
-   const LogDriver_mc=new ecs.AwsLogDriver({
-    streamPrefix: 'mc', 
-    mode: ecs.AwsLogDriverMode.NON_BLOCKING,
-    logRetention : logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
-  })
+      logRetention: logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+    })
+    const LogDriver_mc = new ecs.AwsLogDriver({
+      streamPrefix: 'mc',
+      mode: ecs.AwsLogDriverMode.NON_BLOCKING,
+      logRetention: logs.RetentionDays.THREE_DAYS  // keep logs for 3 days
+    })
 
-  const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 't-pg',
-  {
-    // Memory & CPU values must be compatible. Hover mouse over "memoryLimitMiB" to see values
-    // otherwise you get error "Create TaskDefinition: No Fargate configuration exists for given values"
-    // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
-    memoryLimitMiB: 512,   //default=512
-    cpu: 256,   //default=256
-    // executionRole: role
-  });
-  const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 't-mc',
-  {
-    memoryLimitMiB: 1024,   //default=512
-    cpu: 512,   //default=256
-    // executionRole: role
-  });
-  const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 't-rs',
-  {
-    memoryLimitMiB: 512,   //default=512
-    cpu: 256,   //default=256
-    // executionRole: role
-  });
+    const taskDefinition_pg = new ecs.FargateTaskDefinition(this, 't-pg',
+      {
+        // Memory & CPU values must be compatible. Hover mouse over "memoryLimitMiB" to see values
+        // otherwise you get error "Create TaskDefinition: No Fargate configuration exists for given values"
+        // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
+        memoryLimitMiB: 512,   //default=512
+        cpu: 256,   //default=256
+        // executionRole: role
+      });
+    const taskDefinition_mc = new ecs.FargateTaskDefinition(this, 't-mc',
+      {
+        memoryLimitMiB: 1024,   //default=512
+        cpu: 512,   //default=256
+        // executionRole: role
+      });
+    const taskDefinition_rs = new ecs.FargateTaskDefinition(this, 't-rs',
+      {
+        memoryLimitMiB: 512,   //default=512
+        cpu: 256,   //default=256
+        // executionRole: role
+      });
     const container_pg = taskDefinition_pg.addContainer('postgres',
       {
         image: ecs.ContainerImage.fromRegistry('postgres:10'),
@@ -99,16 +100,16 @@ export class KofaxRPAStack extends cdk.Stack {
         logging: LogDriver_pg // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }
-    );    
+    );
     // ARN = Amazon Resource Name, unique identifier for an AWS resource.
     // we will need to use ARNs (role will be automatically created to get image from ECR and to be able to log) when doing this for customers...
-    const MCRepo=Repository.fromRepositoryName(this,'mcRepo',"managementconsole");
-    const RSRepo=Repository.fromRepositoryName(this,'rsRepo',"roboserver");
+    const MCRepo = Repository.fromRepositoryName(this, 'mcRepo', "managementconsole");
+    const RSRepo = Repository.fromRepositoryName(this, 'rsRepo', "roboserver");
 
     const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
-       // I only want one MC. so it should be in it's own task 
-        image: ecs.ContainerImage.fromEcrRepository(MCRepo,"latest"),
+        // I only want one MC. so it should be in it's own task 
+        image: ecs.ContainerImage.fromEcrRepository(MCRepo, "latest"),
         //('022336740566.dkr.ecr.eu-central-1.amazonaws.com/managementconsole:latest'),
         environment:
         {
@@ -170,18 +171,18 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // declare const contDep: ecs.ContainerDefinition;
     // MC is dep on postgres
-    dependsOn : {"postgres"}  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
+    dependsOn: { "postgres" }  //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.ContainerDependency.html
     const contdep: ecs.ContainerDependency = {
-        container : container_pg,
+      container: container_pg,
       //  condition : ecs.ContainerDependencyCondition.COMPLETE
-      };
+    };
     // container_mc.addContainerDependencies(contdep);
     container_mc.addPortMappings
-    ({
-      containerPort: 8080,  // tomcat
-      // hostPort: 443,   // load balancer
-      protocol: ecs.Protocol.TCP,
-    });
+      ({
+        containerPort: 8080,  // tomcat
+        // hostPort: 443,   // load balancer
+        protocol: ecs.Protocol.TCP,
+      });
     // container_pg.addPortMappings
     // ({
     //   containerPort: 5432,  // postgres
@@ -193,7 +194,7 @@ export class KofaxRPAStack extends cdk.Stack {
         //images should be public for the customers.
         //while not public we need permissions https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
         //https://docs.aws.amazon.com/cdk/api/v1/docs/aws-iam-readme.html        
-        image: ecs.ContainerImage.fromEcrRepository(RSRepo,"latest"),
+        image: ecs.ContainerImage.fromEcrRepository(RSRepo, "latest"),
       }
       // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
       // Do i need to create a separate task for roboserver to support CPU scaling?
@@ -236,9 +237,9 @@ export class KofaxRPAStack extends cdk.Stack {
       taskDefinition: taskDefinition_rs,
       //name: "roboserver-service",
       enableExecuteCommand: true,
-      
-      
-   //   securityGroups: {list. TODO!!!} //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.FargateService.html#securitygroups
+
+
+      //   securityGroups: {list. TODO!!!} //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.FargateService.html#securitygroups
       //https://bobbyhadz.com/blog/aws-cdk-security-group-example
 
 
@@ -246,10 +247,10 @@ export class KofaxRPAStack extends cdk.Stack {
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
-    
+
     // we create an Application Load Balancer
     // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
-    var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', {vpc, internetFacing: true });
+    var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', { vpc, internetFacing: true });
     const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
     service_mc.registerLoadBalancerTargets(
       {
@@ -265,7 +266,7 @@ export class KofaxRPAStack extends cdk.Stack {
     //      Cloudfront (HTTPS)  -->> LB   -->> ECS (containers)    
     //      cloudfront address is public AND lb address is also public but unknown. (security by obscurity)
 
-        //   LB (HTTP)   -->> ECS (containers)    
+    //   LB (HTTP)   -->> ECS (containers)    
 
 
     // var lb = new ecs_patterns.ApplicationLoadBalancedFargateService(this, "FargateService", {
@@ -279,12 +280,12 @@ export class KofaxRPAStack extends cdk.Stack {
     //       //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
     //     },
 
-        //need to add clusters to a Fargate Task Definition to get port mappings
-        // .addPortMappings({   //https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
-        //   containerPort: 8000,
-        // });
-        //add 3  containers (MC, roboserver, database) to 1 task as in 
-        // https://github.com/aws-samples/aws-cdk-examples/blob/08600cd2c0080994c9d4d478b259a8213a786272/typescript/ecs/ecs-service-with-task-placement/index.ts#L21
+    //need to add clusters to a Fargate Task Definition to get port mappings
+    // .addPortMappings({   //https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
+    //   containerPort: 8000,
+    // });
+    //add 3  containers (MC, roboserver, database) to 1 task as in 
+    // https://github.com/aws-samples/aws-cdk-examples/blob/08600cd2c0080994c9d4d478b259a8213a786272/typescript/ecs/ecs-service-with-task-placement/index.ts#L21
     //   },
     // });
 
@@ -299,6 +300,6 @@ export class KofaxRPAStack extends cdk.Stack {
     //     },
     //   }
     // );
-    
+
   }
 }

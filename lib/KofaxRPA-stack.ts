@@ -25,10 +25,10 @@ export class KofaxRPAStack extends cdk.Stack {
 
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
-    const vpc = new ec2.Vpc(this, 'MyVpc', { 
-      maxAzs: 2 ,
-      natGateways: 0,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
-//      cidr: '10.0.0.0/16'
+    const vpc = new ec2.Vpc(this, 'MyVpc', {
+      maxAzs: 2,
+     // natGateways: 0,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
+      //      cidr: '10.0.0.0/16'
     }); //AZ=Availability Zone within a region.
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
     //task definition = json that describes 1 to 10 containers.
@@ -203,9 +203,9 @@ export class KofaxRPAStack extends cdk.Stack {
       protocol: ecs.Protocol.TCP,
     });
     container_rs.addPortMappings({
-        containerPort: 50080,
-        protocol: ecs.Protocol.TCP,
-      })
+      containerPort: 50080,
+      protocol: ecs.Protocol.TCP,
+    })
 
     const dnsNamespace = new servicediscovery.PrivateDnsNamespace(
       this,
@@ -216,12 +216,25 @@ export class KofaxRPAStack extends cdk.Stack {
         description: "Private DnsNamespace for my Microservices",
       }
     );
-    // const sg_pg = new ecs.SecurityGroup(this,'sg-pg',vpc,
-    //   allowAllOutbound: false, 
-    //   description : "Roboserver & MC have SQL access")
+    // const sg_pg = new ec2.SecurityGroup(this, 'sg-pg', { vpc, allowAllOutbound: true, description: "Roboserver & MC can access 5432" });
+    // const sg_mc = new ec2.SecurityGroup(this, 'sg-mc', {vpc,allowAllOutbound: true, description: "Roboserver can access 8080"});
+    // const sg_rs = new ec2.SecurityGroup(this, 'sg-rs', {vpc,allowAllOutbound: true, description: "MC can access 50080"});
+    // sg_pg.connections.allowFrom(
+    //   new ec2.Connections({securityGroups:[sg_mc,sg_rs]}),
+    //   ec2.Port.tcp(5432)
+    // );
+    // sg_mc.connections.allowFrom(
+    //   new ec2.Connections({securityGroups:[sg_rs]}),
+    //   ec2.Port.tcp(8080)
+    // );
+    // sg_rs.connections.allowFrom(
+    //   new ec2.Connections({securityGroups:[sg_mc]}),
+    //   ec2.Port.tcp(50080)
+    // );
     const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,
+      // securityGroups: [sg_pg],
       enableExecuteCommand: true,  // enables shell access to container via AWS CLI https://docs.aws.amazon.com/cdk/api/v1/docs/aws-ecs-readme.html#ecs-exec-command
       cloudMapOptions: {
         // This will be your service_name.namespace
@@ -233,6 +246,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_mc = new ecs.FargateService(this, 's-mc', {
       cluster,
       taskDefinition: taskDefinition_mc,
+      //     securityGroups: [sg_mc],
       enableExecuteCommand: true,
       cloudMapOptions: {
         // This will be your service_name.namespace
@@ -244,6 +258,7 @@ export class KofaxRPAStack extends cdk.Stack {
     const service_rs = new ecs.FargateService(this, 's-rs', {
       cluster,
       taskDefinition: taskDefinition_rs,
+      //      securityGroups: [sg_rs],
       //name: "roboserver-service",
       enableExecuteCommand: true,
 

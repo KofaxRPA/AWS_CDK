@@ -1,3 +1,4 @@
+// Understanding import syntax https://blog.atomist.com/typescript-imports/
 import ec2 = require('@aws-cdk/aws-ec2');
 import ecs = require('@aws-cdk/aws-ecs');
 import ecs_patterns = require('@aws-cdk/aws-ecs-patterns');
@@ -24,7 +25,11 @@ export class KofaxRPAStack extends cdk.Stack {
 
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
-    const vpc = new ec2.Vpc(this, 'MyVpc', { maxAzs: 2 }); //AZ=Availability Zone within a region.
+    const vpc = new ec2.Vpc(this, 'MyVpc', { 
+      maxAzs: 2 ,
+      natGateways: 0,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
+//      cidr: '10.0.0.0/16'
+    }); //AZ=Availability Zone within a region.
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
     //task definition = json that describes 1 to 10 containers.
     //task = instance of a task definition running in a cluster
@@ -177,18 +182,6 @@ export class KofaxRPAStack extends cdk.Stack {
       //  condition : ecs.ContainerDependencyCondition.COMPLETE
     };
     // container_mc.addContainerDependencies(contdep);
-    container_mc.addPortMappings
-      ({
-        containerPort: 8080,  // tomcat
-        // hostPort: 443,   // load balancer
-        protocol: ecs.Protocol.TCP,
-      });
-    // container_pg.addPortMappings
-    // ({
-    //   containerPort: 5432,  // postgres
-    //   // hostPort: 443,   // load balancer
-    //   protocol: ecs.Protocol.TCP,
-    // });
     const container_rs = taskDefinition_rs.addContainer('rs',
       {
         //images should be public for the customers.
@@ -199,8 +192,21 @@ export class KofaxRPAStack extends cdk.Stack {
       // add cpu scaling. if 50% CPU for 20 seconds then add a new Fargate instance.
       // Do i need to create a separate task for roboserver to support CPU scaling?
     );
-    // const app = new cdk.App();
-    // const stack = new cdk.Stack(app, 'aws-ecs-integ-ecs');
+    container_mc.addPortMappings({
+      containerPort: 8080,  // tomcat
+      // hostPort: 443,   // load balancer
+      protocol: ecs.Protocol.TCP,
+    });
+    container_pg.addPortMappings({
+      containerPort: 5432,  // postgres SQL port
+      // hostPort: 443,   // load balancer
+      protocol: ecs.Protocol.TCP,
+    });
+    container_rs.addPortMappings({
+        containerPort: 50080,
+        protocol: ecs.Protocol.TCP,
+      })
+
     const dnsNamespace = new servicediscovery.PrivateDnsNamespace(
       this,
       "DnsNamespace",
@@ -210,6 +216,9 @@ export class KofaxRPAStack extends cdk.Stack {
         description: "Private DnsNamespace for my Microservices",
       }
     );
+    // const sg_pg = new ecs.SecurityGroup(this,'sg-pg',vpc,
+    //   allowAllOutbound: false, 
+    //   description : "Roboserver & MC have SQL access")
     const service_pg = new ecs.FargateService(this, 's-pg', {
       cluster,
       taskDefinition: taskDefinition_pg,

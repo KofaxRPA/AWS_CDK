@@ -5,7 +5,7 @@ import ecs_patterns = require('@aws-cdk/aws-ecs-patterns');
 import * as cloudfront from '@aws-cdk/aws-cloudfront';
 import * as origins from '@aws-cdk/aws-cloudfront-origins';
 import { OriginProtocolPolicy } from '@aws-cdk/aws-cloudfront'
-import { AutoScalingGroup } from '@aws-cdk/aws-autoscaling';  // for elbv2
+import * as autoscaling from '@aws-cdk/aws-autoscaling';  // for elbv2
 import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
 import { Role, ServicePrincipal, PolicyStatement } from '@aws-cdk/aws-iam'
 import * as cdk from '@aws-cdk/core';
@@ -15,6 +15,8 @@ import { LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
 import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
 import * as servicediscovery from "@aws-cdk/aws-servicediscovery"
+import { ApplicationTargetGroup } from '@aws-cdk/aws-elasticloadbalancingv2';
+import { Port } from '@aws-cdk/aws-ec2';
 // A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
 // All the resources in a stack are defined by the stack's AWS CloudFormation template
 // This Typescript generates a JSON CloudFormation Template for the Kofax RPA Stack
@@ -27,7 +29,7 @@ export class KofaxRPAStack extends cdk.Stack {
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', {
       maxAzs: 2,
-      // natGateways: 0,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
+      // natGateways: 1,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
       //      cidr: '10.0.0.0/16'
     }); //AZ=Availability Zone within a region.
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
@@ -165,7 +167,7 @@ export class KofaxRPAStack extends cdk.Stack {
           // CONFIG_SECURITY_JDBCDRIVERUPLOAD: "ANY_HOST",
           // base url - this is how a user would find the Management Console
           SETTINGS_ENTRY_KEY_7: "BASE_URL",
-          SETTINGS_ENTRY_VALUE_7: "http://yourwebsite.com:8080",
+          SETTINGS_ENTRY_VALUE_7: "http://yourwebsite.com:80",
         },
         logging: LogDriver_mc
         // do we need to add a network so the 3 containers see each other??
@@ -262,58 +264,61 @@ export class KofaxRPAStack extends cdk.Stack {
       securityGroups: [sg_rs],
       //name: "roboserver-service",
       enableExecuteCommand: true,
-
-
-      //   securityGroups: {list. TODO!!!} //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.FargateService.html#securitygroups
-      //https://bobbyhadz.com/blog/aws-cdk-security-group-example
-
-
     });
     // service.addPlacementStrategies(
     //   ecs.PlacementStrategy.packedBy(ecs.BinPackResource.MEMORY), 
     //   ecs.PlacementStrategy.spreadAcross(ecs.BuiltInAttributes.AVAILABILITY_ZONE));
 
-    // we create an Application Load Balancer
-    // elb = Elastic Load Balancer  https://docs.aws.amazon.com/cdk/api/latest/docs/aws-elasticloadbalancingv2-readme.html
-    var lb = new elbv2.ApplicationLoadBalancer(this, 'LB', { vpc, internetFacing: true });
-    const listener = lb.addListener('Listener', { port: 80 });   // 443 = HTTPS
+    // ===========================================
+    // Application Load Balancer
+    // ===========================================
+    var alb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
+      vpc,
+      // vpcSubnets: { subnets: vpc.publicSubnets }, //https://www.gravitywell.co.uk/insights/deploying-applications-to-ecs-fargate-with-aws-cdk/
+      // By default the VPC construct creates a PUBLIC and a PRIVATE subnet groups with subnets in 3 availability zones.
+      internetFacing: true  // this gives the load balancer a public IP4 address.
+    });
+
+    const tg = new ApplicationTargetGroup(this, 'tg-mcABC', { vpc: vpc });
+    tg.configureHealthCheck({ port: "8080", path: "/Ping" });
+    // listener.addTargetGroups("Listener", { targetGroups: [tg] });
+
+    const listener = alb.addListener('Listener', {
+      port: 80,   // CDK will automatically add a rule to the ALB's security group to open inbound traffic on port 80 from the world
+      open: true, // open means access from the internet. The ALB is put in the public subnet
+      //defaultAction: elbv2.ListenerAction.forward([tg],)
+    });
+
+
+    //  const listener = lb.addListener("lb-listener", { open: true, port: 443, certificates: [cert], });
+
+    // const asg_rs = new autoscaling.AutoScalingGroup(this, 'asg_rs', {
+    //   vpc
+    // }
+
+    // const tg = new ApplicationTargetGroup(this, 'tg-mc', {vpc : vpc});
+    // tg.configureHealthCheck({ port: "8080", path: "/Ping" });
+    // listener.addTargetGroups("Listener", { targetGroups: [tg] });
+
+    //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-elasticloadbalancingv2.HealthCheck.html
+
+
+
+    // )
     service_mc.registerLoadBalancerTargets(
       {
         containerName: 'mc',
         containerPort: 8080,
         newTargetGroupId: 'ECS',
+
         listener: ecs.ListenerConfig.applicationListener(listener, {
           protocol: elbv2.ApplicationProtocol.HTTP
         }),
+
       },
     );
 
-    //      Cloudfront (HTTPS)  -->> LB   -->> ECS (containers)    
-    //      cloudfront address is public AND lb address is also public but unknown. (security by obscurity)
-
-    //   LB (HTTP)   -->> ECS (containers)    
-
-
-    // var lb = new ecs_patterns.ApplicationLoadBalancedFargateService(this, "FargateService", {
-    //   cluster,
-    //   taskImageOptions: {
-    //     // https://docs.aws.amazon.com/cdk/api/latest/docs/aws-ecs-patterns-readme.html
-    //     image: ecs.ContainerImage.fromRegistry("postgres:10"),
-    //     environment: {
-    //       TEST_ENVIRONMENT_VARIABLE1: "test environment variable 1 value",
-    //       TEST_ENVIRONMENT_VARIABLE2: "test environment variable 2 value",
-    //       //how to add secrets https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
-    //     },
-
-    //need to add clusters to a Fargate Task Definition to get port mappings
-    // .addPortMappings({   //https://faun.pub/deploying-docker-container-with-secrets-using-aws-and-cdk-8ff603092666
-    //   containerPort: 8000,
-    // });
-    //add 3  containers (MC, roboserver, database) to 1 task as in 
-    // https://github.com/aws-samples/aws-cdk-examples/blob/08600cd2c0080994c9d4d478b259a8213a786272/typescript/ecs/ecs-service-with-task-placement/index.ts#L21
-    //   },
-    // });
-
+    //https://www.gravitywell.co.uk/insights/deploying-applications-to-ecs-fargate-with-aws-cdk/
     //Create a new cloudfront distribution, using a a source the lb
     // this.postsContentDistrubtion = new cloudfront.Distribution(
     //   this,

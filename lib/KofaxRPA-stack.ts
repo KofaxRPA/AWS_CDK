@@ -11,7 +11,7 @@ import { Role, ServicePrincipal, PolicyStatement } from '@aws-cdk/aws-iam'
 import * as cdk from '@aws-cdk/core';
 import { Repository } from '@aws-cdk/aws-ecr';
 import { Expiration } from '@aws-cdk/core';
-import { LogDrivers } from '@aws-cdk/aws-ecs';
+import { ContainerDependencyCondition, LogDrivers } from '@aws-cdk/aws-ecs';
 import * as logs from '@aws-cdk/aws-logs';
 import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
 import * as servicediscovery from "@aws-cdk/aws-servicediscovery"

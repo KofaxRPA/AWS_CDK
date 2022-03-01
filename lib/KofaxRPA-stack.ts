@@ -28,10 +28,10 @@ export class KofaxRPAStack extends cdk.Stack {
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
     const vpc = new ec2.Vpc(this, 'MyVpc', {
-      maxAzs: 2,
+      maxAzs: 2, //AZ=Availability Zone within a region.
       // natGateways: 1,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
       //      cidr: '10.0.0.0/16'
-    }); //AZ=Availability Zone within a region.
+    });
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc }); // logical grouping of tasks or services
     //task definition = json that describes 1 to 10 containers.
     //task = instance of a task definition running in a cluster

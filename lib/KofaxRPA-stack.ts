@@ -258,6 +258,7 @@ export class KofaxRPAStack extends cdk.Stack {
         dnsRecordType: DnsRecordType.A,
       },
     });
+
     const service_rs = new ecs.FargateService(this, 's-rs', {
       cluster,
       taskDefinition: taskDefinition_rs,

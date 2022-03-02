@@ -288,12 +288,9 @@ export class KofaxRPAStack extends cdk.Stack {
     tg_mc.configureHealthCheck({ port: "8080", path: "/Ping" });
     // listener.addTargetGroups("Listener", { targetGroups: [tg] });
 
-    const listener = alb.addListener('Listener', {
-      port: 80,   // CDK will automatically add a rule to the ALB's security group to open inbound traffic on port 80 from the world
-      open: true, // open means access from the internet. The ALB is put in the public subnet
-      //defaultAction: elbv2.ListenerAction.forward([tg],)
+    const listenerRPA = new elbv2.ApplicationListener(this, 'Listener', {
+      loadBalancer: alb, port: 80,   // CDK will automatically add a rule to the ALB's security group to open inbound traffic on port 80 from the world
     });
-
 
     //  const listener = lb.addListener("lb-listener", { open: true, port: 443, certificates: [cert], });
 
@@ -316,7 +313,7 @@ export class KofaxRPAStack extends cdk.Stack {
         containerPort: 8080,
         newTargetGroupId: 'ECS',
 
-        listener: ecs.ListenerConfig.applicationListener(listener, {
+        listener: ecs.ListenerConfig.applicationListener(listenerRPA, {
           protocol: elbv2.ApplicationProtocol.HTTP
         }),
 

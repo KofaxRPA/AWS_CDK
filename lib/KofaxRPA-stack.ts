@@ -280,8 +280,12 @@ export class KofaxRPAStack extends cdk.Stack {
       internetFacing: true  // this gives the load balancer a public IP4 address.
     });
 
-    const tg = new ApplicationTargetGroup(this, 'tg-mcABC', { vpc: vpc });
-    tg.configureHealthCheck({ port: "8080", path: "/Ping" });
+    const tg_mc = new ApplicationTargetGroup(this, 'tg-mc', {
+      vpc: vpc,
+      port : 80,
+      protocol: elbv2.ApplicationProtocol.HTTP
+    });
+    tg_mc.configureHealthCheck({ port: "8080", path: "/Ping" });
     // listener.addTargetGroups("Listener", { targetGroups: [tg] });
 
     const listener = alb.addListener('Listener', {

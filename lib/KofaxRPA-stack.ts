@@ -103,7 +103,7 @@ export class KofaxRPAStack extends cdk.Stack {
           POSTGRES_PASSWORD: "schedulerpassword",
           POSTGRES_DB: "scheduler",
         },
-        memoryLimitMiB: 256,
+        memoryLimitMiB: 512,
         logging: LogDriver_pg // https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-ecs.AwsLogDriverProps.html
         // https://docs.docker.com/config/containers/logging/configure/
       }

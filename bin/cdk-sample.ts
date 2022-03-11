@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import * as cdk from '@aws-cdk/core';
+import cdk = require('aws-cdk-lib');
 import { KofaxRPAStack } from '../lib/KofaxRPA-stack';
 
 const app = new cdk.App();

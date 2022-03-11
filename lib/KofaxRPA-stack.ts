@@ -1,33 +1,28 @@
 // Understanding import syntax https://blog.atomist.com/typescript-imports/
-import ec2 = require('@aws-cdk/aws-ec2');
-import ecs = require('@aws-cdk/aws-ecs');
-import ecs_patterns = require('@aws-cdk/aws-ecs-patterns');
-import * as cloudfront from '@aws-cdk/aws-cloudfront';
-import * as origins from '@aws-cdk/aws-cloudfront-origins';
-import { OriginProtocolPolicy } from '@aws-cdk/aws-cloudfront'
-import * as autoscaling from '@aws-cdk/aws-autoscaling';  // for elbv2
-import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
-import { Role, ServicePrincipal, PolicyStatement } from '@aws-cdk/aws-iam'
-import * as cdk from '@aws-cdk/core';
-import { Repository } from '@aws-cdk/aws-ecr';
-import { Expiration } from '@aws-cdk/core';
-import { ContainerDependencyCondition, LogDrivers } from '@aws-cdk/aws-ecs';
-import * as logs from '@aws-cdk/aws-logs';
-import { DnsRecordType } from "@aws-cdk/aws-servicediscovery";
-import * as servicediscovery from "@aws-cdk/aws-servicediscovery"
-import { ApplicationTargetGroup } from '@aws-cdk/aws-elasticloadbalancingv2';
-import { Port } from '@aws-cdk/aws-ec2';
+import cdk = require('aws-cdk-lib');
+import ec2 = require('aws-cdk-lib/aws-ec2');
+import ecr = require('aws-cdk-lib/aws-ecr');
+import ecs = require('aws-cdk-lib/aws-ecs')
+import s3 = require('aws-cdk-lib/aws-s3');
+import iam = require('aws-cdk-lib/aws-iam');
+import logs = require('aws-cdk-lib/aws-logs');
+import route53 = require('aws-cdk-lib/aws-route53');
+import route53targets = require('aws-cdk-lib/aws-route53-targets');
+import certificatemanager = require('aws-cdk-lib/aws-certificatemanager');
+import elbv2 = require('aws-cdk-lib/aws-elasticloadbalancingv2');
+import servicediscovery = require('aws-cdk-lib/aws-servicediscovery')
+
 // A stack is a collection of AWS resources that you can manage as a single unit in AWS CloudFront.
 // All the resources in a stack are defined by the stack's AWS CloudFormation template
 // This Typescript generates a JSON CloudFormation Template for the Kofax RPA Stack
 export class KofaxRPAStack extends cdk.Stack {
-  public readonly postsContentDistrubtion: cloudfront.Distribution;
+  //public readonly postsContentDistrubtion: cloudfront.Distribution;
   constructor(scope: cdk.App, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-
+    const domain = "subdomain.1demo.space";
     // Create VPC and Fargate Cluster
     // NOTE: Limit AZs to avoid reaching resource quotas
-    const vpc = new ec2.Vpc(this, 'MyVpc', {
+    const vpc = new ec2.Vpc(this, 'KofaxRPA', {
       maxAzs: 2, //AZ=Availability Zone within a region.
       // natGateways: 1,  // A NAT Gateway is required to access the internet (only needed by Roboserver)
       //      cidr: '10.0.0.0/16'
@@ -110,8 +105,8 @@ export class KofaxRPAStack extends cdk.Stack {
     );
     // ARN = Amazon Resource Name, unique identifier for an AWS resource.
     // we will need to use ARNs (role will be automatically created to get image from ECR and to be able to log) when doing this for customers...
-    const MCRepo = Repository.fromRepositoryName(this, 'mcRepo', "managementconsole");
-    const RSRepo = Repository.fromRepositoryName(this, 'rsRepo', "roboserver");
+    const MCRepo = ecr.Repository.fromRepositoryName(this, 'mcRepo', "managementconsole");
+    const RSRepo = ecr.Repository.fromRepositoryName(this, 'rsRepo', "roboserver");
 
     const container_mc = taskDefinition_mc.addContainer('mc',  // runs Apache Tomcat on port 8080
       {
@@ -243,7 +238,7 @@ export class KofaxRPAStack extends cdk.Stack {
         // This will be your service_name.namespace
         name: "postgres-service",
         cloudMapNamespace: dnsNamespace,
-        dnsRecordType: DnsRecordType.A,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
       },
     });
     const service_mc = new ecs.FargateService(this, 's-mc', {
@@ -255,7 +250,7 @@ export class KofaxRPAStack extends cdk.Stack {
         // This will be your service_name.namespace
         name: "managementconsole-service",
         cloudMapNamespace: dnsNamespace,
-        dnsRecordType: DnsRecordType.A,
+        dnsRecordType: servicediscovery.DnsRecordType.A,
       },
     });
 
@@ -275,50 +270,56 @@ export class KofaxRPAStack extends cdk.Stack {
     // ===========================================
     var alb = new elbv2.ApplicationLoadBalancer(this, 'LB', {
       vpc,
-      // vpcSubnets: { subnets: vpc.publicSubnets }, //https://www.gravitywell.co.uk/insights/deploying-applications-to-ecs-fargate-with-aws-cdk/
+      vpcSubnets: { subnets: vpc.publicSubnets }, //https://www.gravitywell.co.uk/insights/deploying-applications-to-ecs-fargate-with-aws-cdk/
       // By default the VPC construct creates a PUBLIC and a PRIVATE subnet groups with subnets in 3 availability zones.
       internetFacing: true  // this gives the load balancer a public IP4 address.
     });
 
-    const tg_mc = new ApplicationTargetGroup(this, 'tg-mc', {
+    const tg_mc = new elbv2.ApplicationTargetGroup(this, 'tg-mc', {
       vpc: vpc,
       port : 80,
-      protocol: elbv2.ApplicationProtocol.HTTP
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
     });
-    tg_mc.configureHealthCheck({ port: "8080", path: "/Ping" });
+    tg_mc.configureHealthCheck({ port: "8080", path: "/Ping", protocol: elbv2.Protocol.HTTP });
     // listener.addTargetGroups("Listener", { targetGroups: [tg] });
 
-    const listenerRPA = new elbv2.ApplicationListener(this, 'Listener', {
-      loadBalancer: alb, port: 80,   // CDK will automatically add a rule to the ALB's security group to open inbound traffic on port 80 from the world
+    // const cert = new certificatemanager.Certificate(
+    //   this,
+    //   `RPA-cert`,
+    //   {
+    //     domainName: domain,
+    //     subjectAlternativeNames: [`*.${domain}`],
+    //     validation: certificatemanager.CertificateValidation.fromDns(zone),
+    //   }
+    // );
+    const listenerRPA = alb.addListener('Listener', {
+      open: true,
+      port: 80,
     });
 
-    //  const listener = lb.addListener("lb-listener", { open: true, port: 443, certificates: [cert], });
-
-    // const asg_rs = new autoscaling.AutoScalingGroup(this, 'asg_rs', {
-    //   vpc
+    // listenerRPA.addAction('Default Action', {
+    //   action: elbv2.ListenerAction.forward([tg_mc], 
+    //     {  stickinessDuration: cdk.Duration.minutes(30) })
     // }
 
-    // const tg = new ApplicationTargetGroup(this, 'tg-mc', {vpc : vpc});
-    // tg.configureHealthCheck({ port: "8080", path: "/Ping" });
-    // listener.addTargetGroups("Listener", { targetGroups: [tg] });
+    listenerRPA.addTargetGroups('something', {
+      targetGroups: [tg_mc],
+    })
 
-    //https://docs.aws.amazon.com/cdk/api/v1/docs/@aws-cdk_aws-elasticloadbalancingv2.HealthCheck.html
+    service_mc.attachToApplicationTargetGroup(tg_mc);
+    // service_mc.registerLoadBalancerTargets(
+    //   {
+    //     containerName: 'mc',
+    //     containerPort: 8080,
+    //     newTargetGroupId: 'ECS',
 
+    //     listener: ecs.ListenerConfig.applicationListener(listenerRPA, {
+    //       protocol: elbv2.ApplicationProtocol.HTTP
+    //     }),
 
-
-    // )
-    service_mc.registerLoadBalancerTargets(
-      {
-        containerName: 'mc',
-        containerPort: 8080,
-        newTargetGroupId: 'ECS',
-
-        listener: ecs.ListenerConfig.applicationListener(listenerRPA, {
-          protocol: elbv2.ApplicationProtocol.HTTP
-        }),
-
-      },
-    );
+    //   },
+    // );
 
     //https://www.gravitywell.co.uk/insights/deploying-applications-to-ecs-fargate-with-aws-cdk/
     //Create a new cloudfront distribution, using a a source the lb
